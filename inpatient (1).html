@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>GM VEZA HOSPITAL - Inpatient Bill</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body{font-family: Arial, sans-serif;background:#eaf4ff;padding:20px;}
+.bill-container{width:950px;margin:auto;background:#fff;padding:25px;border-radius:10px;border-top:8px solid #0b63ce;box-shadow:0 5px 15px rgba(0,0,0,0.08);}
+.header{position:relative;text-align:center;border-bottom:2px solid #0b63ce;padding-bottom:15px;min-height:120px;}
+.header img{
+    position:absolute;
+    left:0;
+    top:0;
+    width:180px;   /* Enlarged Logo */
+}
+.header h2{margin:0;color:#0b63ce;letter-spacing:2px;}
+.boxes{display:flex;justify-content:space-between;margin-top:20px;}
+.box{width:48%;border:1px solid #0b63ce;padding:10px;border-radius:5px;background:#f5f9ff;font-size:14px;}
+.patient-section{display:flex;justify-content:space-between;margin-top:20px;font-size:14px;}
+.patient-section div{width:48%;}
+input, select{width:100%;padding:5px;margin-top:4px;margin-bottom:10px;border-radius:4px;border:1px solid #bcd6ff;}
+.small-box{border:1px solid #0b63ce;padding:10px;border-radius:5px;background:#f5f9ff;}
+table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px;}
+th{background:#0b63ce;color:#fff;padding:8px;}
+td{border:1px solid #cfe2ff;padding:6px;text-align:center;}
+.summary-section{display:flex;justify-content:flex-end;margin-top:20px;}
+.summary-right{width:40%;}
+.signature-section{display:flex;justify-content:flex-end;margin-top:50px;}
+.signature-line{border-top:1px solid #000;margin-top:60px;width:250px;text-align:center;}
+button{margin-top:15px;padding:8px 20px;background:#0b63ce;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:bold;}
+button:hover{background:#084a9c;}
+.records{margin-top:40px;}
+@media print{button{display:none;}}
+</style>
+</head>
+
+<body>
+
+<div class="bill-container" id="bill">
+
+<div class="header">
+    <img src="veza.png" alt="VEZA Logo">
+    <h2>GM VEZA HOSPITAL</h2>
+    <p>P.O Box 612-40200 | Tel: 0715513893 | Kenya</p>
+    <h3 style="color:#0b63ce;">INPATIENT BILL</h3>
+</div>
+
+<div class="boxes">
+    <div class="box">
+        <strong>From:</strong><br>
+        Address: 612-40200<br>
+        Tel: 0715513893<br>
+        Email: everlinenyaboke5@gmail.com<br>
+        PIN: P052389331J
+    </div>
+
+    <div class="box">
+        <strong>Invoice To:</strong><br>
+        SHA - FFS<br>
+        NHIF Building, Ragati Road<br>
+        P.O Box 30443 - 00100 Nairobi
+    </div>
+</div>
+
+<div class="patient-section">
+<div>
+Patient Name:<input type="text" id="pname">
+Date of Admission:<input type="date" id="admissionDate">
+Discharge Date:<input type="date" id="dischargeDate">
+ID No.:<input type="text">
+</div>
+
+<div>
+Date :<input type="date" id="billDateInput">
+IP No.:<input type="text">
+Invoice No.:<input type="text" id="billNo">
+Room / Bed No:<input type="text">
+
+<div class="small-box">
+Invoice No:<input type="text" id="billNoBox">
+Date:<input type="date" id="billDate">
+Amount Balance:<input type="text" id="balanceBox" readonly>
+</div>
+</div>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>S.No</th>
+<th>Particulars</th>
+<th>Rate</th>
+<th>Qty</th>
+<th>Amount</th>
+</tr>
+</thead>
+<tbody id="serviceRows"></tbody>
+</table>
+
+<div class="summary-section">
+<div></div>
+<div class="summary-right">
+<table>
+<tr><td>Total Bill</td><td id="totalBill">0.00</td></tr>
+<tr><td>Paid Amount</td><td><input type="number" id="paid" value="0"></td></tr>
+<tr><td><strong>Balance</strong></td><td id="balance">0.00</td></tr>
+</table>
+</div>
+</div>
+
+<div class="signature-section">
+<div>
+<div class="signature-line"></div>
+Authorized Signature
+</div>
+</div>
+
+<button onclick="saveRecord()">Save Record</button>
+<button onclick="downloadExcel()">Download Records (Excel)</button>
+<button onclick="downloadLatestPDF()">Download PDF</button>
+
+</div>
+
+<div class="bill-container records" id="recordsSection">
+<h3 style="color:#0b63ce;">Saved Inpatient Records</h3>
+<table id="recordsTable">
+<thead>
+<tr>
+<th>Bill No</th>
+<th>Patient Name</th>
+<th>Total</th>
+<th>Paid</th>
+<th>Balance</th>
+<th>Date Saved</th>
+<th>Download PDF</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<script>
+const tbody = document.getElementById("serviceRows");
+const options = [
+"Registration Charge","Consultation Fee","X-Ray fee","Medicine Bill","Lab Bill",
+"Pharmacy","Nursing fee","Delivery fee","Accommodation fee","Theatre fee","Other Charges"
+];
+
+for(let i=1;i<=8;i++){
+    let row = document.createElement("tr");
+    row.innerHTML = `
+        <td>${i}</td>
+        <td><select>${options.map(o=>`<option>${o}</option>`).join("")}</select></td>
+        <td><input type="number" class="rate" value="0"></td>
+        <td><input type="number" class="qty" value="1"></td>
+        <td class="amount">0.00</td>
+    `;
+    tbody.appendChild(row);
+}
+
+function calculate(){
+    let total = 0;
+    document.querySelectorAll("#serviceRows tr").forEach(row=>{
+        let rate = parseFloat(row.querySelector(".rate").value)||0;
+        let qty = parseFloat(row.querySelector(".qty").value)||0;
+        let amount = rate * qty;
+        row.querySelector(".amount").textContent = amount.toFixed(2);
+        total += amount;
+    });
+    document.getElementById("totalBill").textContent = total.toFixed(2);
+    let paid = parseFloat(document.getElementById("paid").value)||0;
+    let balance = total - paid;
+    document.getElementById("balance").textContent = balance.toFixed(2);
+    document.getElementById("balanceBox").value = balance.toFixed(2);
+}
+
+document.addEventListener("input", calculate);
+
+function saveRecord(){
+    let records = JSON.parse(localStorage.getItem("inpatientRecords"))||[];
+    let record={
+        billNo: document.getElementById("billNo").value,
+        pname: document.getElementById("pname").value,
+        total: document.getElementById("totalBill").textContent,
+        paid: document.getElementById("paid").value,
+        balance: document.getElementById("balance").textContent,
+        date:new Date().toLocaleDateString()
+    };
+    records.push(record);
+    localStorage.setItem("inpatientRecords",JSON.stringify(records));
+    alert("Saved Successfully! Now you can download PDF.");
+    displayRecords();
+}
+
+function displayRecords(){
+    let records = JSON.parse(localStorage.getItem("inpatientRecords"))||[];
+    const tbody = document.querySelector("#recordsTable tbody");
+    tbody.innerHTML="";
+    records.forEach((r,i)=>{
+        tbody.innerHTML+=`
+        <tr>
+            <td>${r.billNo}</td>
+            <td>${r.pname}</td>
+            <td>${r.total}</td>
+            <td>${r.paid}</td>
+            <td>${r.balance}</td>
+            <td>${r.date}</td>
+            <td><button onclick="downloadPDF(${i})">Download PDF</button></td>
+        </tr>`;
+    });
+}
+
+async function downloadLatestPDF(){
+    const records = JSON.parse(localStorage.getItem("inpatientRecords"))||[];
+    if(records.length==0){ alert("Please save the record first!"); return;}
+    downloadPDF(records.length-1);
+}
+
+async function downloadPDF(index){
+    const records = JSON.parse(localStorage.getItem("inpatientRecords"))||[];
+    const record = records[index];
+    if(!record) return;
+
+    const billDiv = document.getElementById("bill");
+    const canvas = await html2canvas(billDiv,{scale:3,backgroundColor:"#ffffff"});
+    const imgData = canvas.toDataURL("image/png");
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p","mm","a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const imgHeight = (canvas.height * pageWidth)/canvas.width;
+
+    pdf.addImage(imgData,"PNG",0,0,pageWidth,imgHeight);
+
+    const logoImg = new Image();
+    logoImg.src = "veza.png";
+
+    logoImg.onload = function(){
+        const logoWidth = 35;
+        const logoHeight = logoWidth * (logoImg.height/logoImg.width);
+        pdf.addImage(logoImg,"PNG",pageWidth-logoWidth-10,10,logoWidth,logoHeight);
+
+        pdf.setFontSize(12);
+        pdf.text("Authorized Signature: ____________________",pageWidth-90,imgHeight-10);
+
+        const safeName = record.pname.replace(/\s+/g,"_").replace(/[^a-zA-Z0-9_]/g,"");
+        const safeInvoice = record.billNo.replace(/[^a-zA-Z0-9]/g,"");
+
+        pdf.save(`${safeName}_${safeInvoice}.pdf`);
+    }
+}
+
+function downloadExcel(){
+    let records = JSON.parse(localStorage.getItem("inpatientRecords"))||[];
+    if(records.length==0){alert("No records!");return;}
+    const ws = XLSX.utils.json_to_sheet(records);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inpatient Records");
+    XLSX.writeFile(wb, "GM_VEZA_Inpatient_Records.xlsx");
+}
+
+window.onload = displayRecords;
+</script>
+
+</body>
+</html>

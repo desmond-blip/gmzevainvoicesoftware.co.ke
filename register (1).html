@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>GM VEZA HOSPITAL - Complete Invoice System</title>
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- html2canvas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<!-- SheetJS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body { font-family: Arial, sans-serif; background:#eaf4ff; padding:20px; }
+.invoice-container { max-width:1100px; margin:auto; background:#fff; padding:30px; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.08); border-top:8px solid #0b63ce; position:relative;}
+.header { display:flex; align-items:center; gap:20px; margin-bottom:20px; }
+.logo-left img { width:220px; }  /* Enlarged Logo */
+.hospital-title h2 { margin:0; color:#0b63ce; }
+.outpatient { margin:0; color:#555; letter-spacing:2px; }
+.boxes{ display:flex; justify-content:space-between; margin-bottom:20px; gap:20px; }
+.box{ width:48%; border:1px solid #0b63ce; padding:12px; border-radius:6px; background:#f5f9ff; font-size:14px; }
+.details { display:flex; gap:20px; margin-bottom:20px; }
+.details div { width:50%; }
+label { font-weight:bold; color:#0b63ce; margin-top:10px; display:block; }
+input, select { width:100%; padding:6px; margin-top:5px; border-radius:5px; border:1px solid #bcd6ff; }
+table { width:100%; border-collapse:collapse; margin-top:20px; font-size:14px; }
+th { background:#0b63ce; color:white; padding:8px; }
+td { border:1px solid #cfe2ff; padding:6px; text-align:center; }
+.bottom-container { display:flex; justify-content:space-between; margin-top:40px; }
+.signature-box { width:40%; text-align:left; }
+.signature-line { border-bottom:1px solid #000; width:250px; margin:100px 0 5px 0; }
+.totals-box { width:45%; }
+.btn { margin-top:15px; padding:8px 16px; background:#0b63ce; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; }
+.btn:hover { background:#084a9c; }
+.database-container { margin-top:50px; }
+@media print { .btn { display:none; } }
+</style>
+</head>
+
+<body>
+
+<div class="invoice-container" id="invoice">
+  <div class="header">
+    <div class="logo-left"><img src="veza.png" alt="VEZA Logo"></div>
+    <div class="hospital-title">
+      <h2>GM VEZA HOSPITAL</h2>
+      <h3 class="outpatient">OUTPATIENT INVOICE</h3>
+    </div>
+  </div>
+
+  <div class="boxes">
+    <div class="box">
+      <strong>From:</strong><br>
+      Address: 612-40200<br>
+      Tel: 0715513893<br>
+      Email: everlinenyaboke5@gmail.com<br>
+      PIN: P052389331J
+    </div>
+    <div class="box">
+      <strong>Invoice To:</strong><br>
+      SHA - FFS<br>
+      NHIF Building, Ragati Road<br>
+      P.O Box 30443 - 00100 Nairobi
+    </div>
+  </div>
+
+  <div class="details">
+    <div>
+      <label>Invoice No</label><input type="text" id="invoiceNo">
+      <label>Patient Name</label><input type="text" id="patientName">
+      <label>Membership No</label><input type="text" id="membershipNo">
+    </div>
+    <div>
+      <label>Claim ID</label><input type="text" id="claimId">
+      <label>Created On</label><input type="date" id="createdOn">
+      <label>Due Date</label><input type="date" id="dueDate">
+    </div>
+  </div>
+
+  <h3 style="text-align:center;color:#0b63ce;">Medical Services</h3>
+
+  <table>
+  <thead>
+  <tr>
+    <th>No</th>
+    <th>Description</th>
+    <th>Qty (grams)</th>
+    <th>Unit Price</th>
+    <th>VAT%</th>
+    <th>Disc%</th>
+    <th>Amount</th>
+    <th>Net</th>
+  </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+  </table>
+
+  <div class="bottom-container">
+    <div class="signature-box">
+      <p><strong>For GM Veza Hospital:</strong></p>
+      <div class="signature-line"></div>
+      <p>Date: ____________________</p>
+    </div>
+    <div class="totals-box">
+      <table>
+        <tr><td>Total Amount</td><td id="totalAmount">0.00</td></tr>
+        <tr><td>Co-payment</td><td><input type="number" id="copayment" value="0"></td></tr>
+        <tr><td>Discount</td><td><input type="number" id="extraDiscount" value="0"></td></tr>
+        <tr><td><strong>Balance</strong></td><td id="balance">0.00</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <button class="btn" onclick="downloadPDF()">Download PDF</button>
+</div>
+
+<div class="database-container">
+  <h3 style="color:#0b63ce;">Saved Invoices</h3>
+  <button class="btn" onclick="saveRecord()">Save Record</button>
+  <button class="btn" onclick="downloadExcel()">Download All Records (Excel)</button>
+  <table id="recordsTable">
+    <thead>
+      <tr>
+        <th>Invoice</th>
+        <th>Patient</th>
+        <th>Total</th>
+        <th>Balance</th>
+        <th>Download PDF</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+const tableBody = document.getElementById("tableBody");
+const drugOptions = ["Paracetamol 500mg Tablet","Ibuprofen 400mg Tablet","Amoxicillin 500mg Capsule","Ceftriaxone 1g Injection","Omeprazole 20mg Capsule","Salbutamol Inhaler 100mcg","Amlodipine 5mg Tablet","Metformin 500mg Tablet","Adrenaline 1mg Injection","Oxytocin 10IU Injection"];
+
+for(let i=1;i<=10;i++){
+  let row=document.createElement("tr");
+  row.innerHTML=`<td>${i}</td>
+    <td><select>${drugOptions.map(d=>`<option>${d}</option>`).join("")}</select></td>
+    <td><input type="number" class="qty" value="1"></td>
+    <td><input type="number" class="price" value="0"></td>
+    <td><input type="number" class="vat" value="0"></td>
+    <td><input type="number" class="disc" value="0"></td>
+    <td class="amount">0.00</td>
+    <td class="net">0.00</td>`;
+  tableBody.appendChild(row);
+}
+
+document.addEventListener("input",e=>{
+  if(e.target.closest("tr")) calculateRow(e.target.closest("tr"));
+  if(e.target.id==="copayment"||e.target.id==="extraDiscount") calculateTotals();
+});
+
+function calculateRow(row){
+  let qty=parseFloat(row.querySelector(".qty").value)||0;
+  let price=parseFloat(row.querySelector(".price").value)||0;
+  let vat=parseFloat(row.querySelector(".vat").value)||0;
+  let disc=parseFloat(row.querySelector(".disc").value)||0;
+  let amount=qty*price;
+  let net=amount+(amount*vat/100)-(amount*disc/100);
+  row.querySelector(".amount").textContent=amount.toFixed(2);
+  row.querySelector(".net").textContent=net.toFixed(2);
+  calculateTotals();
+}
+
+function calculateTotals(){
+  let total=0;
+  document.querySelectorAll(".net").forEach(c=>total+=parseFloat(c.textContent)||0);
+  document.getElementById("totalAmount").textContent=total.toFixed(2);
+  let copay=parseFloat(document.getElementById("copayment").value)||0;
+  let disc=parseFloat(document.getElementById("extraDiscount").value)||0;
+  document.getElementById("balance").textContent=(total-copay-disc).toFixed(2);
+}
+
+function saveRecord(){
+  let records=JSON.parse(localStorage.getItem("vezaInvoices"))||[];
+  let record={
+    invoiceNo:document.getElementById("invoiceNo").value,
+    patientName:document.getElementById("patientName").value,
+    total:document.getElementById("totalAmount").textContent,
+    balance:document.getElementById("balance").textContent
+  };
+  if(!record.invoiceNo||!record.patientName){alert("Invoice No and Patient Name required!");return;}
+  records.push(record);
+  localStorage.setItem("vezaInvoices",JSON.stringify(records));
+  displayRecords();
+  alert("Invoice saved!");
+}
+
+function displayRecords(){
+  let records=JSON.parse(localStorage.getItem("vezaInvoices"))||[];
+  let tbody=document.querySelector("#recordsTable tbody");
+  tbody.innerHTML="";
+  records.forEach((r,i)=>{
+    tbody.innerHTML+=`<tr>
+      <td>${r.invoiceNo}</td>
+      <td>${r.patientName}</td>
+      <td>${r.total}</td>
+      <td>${r.balance}</td>
+      <td><button onclick="downloadPDF(${i})">Download PDF</button></td>
+    </tr>`;
+  });
+}
+
+async function downloadPDF(index=null){
+  const {jsPDF}=window.jspdf;
+
+  if(index!==null){
+    let records=JSON.parse(localStorage.getItem("vezaInvoices"))||[];
+    let r=records[index];
+    document.getElementById("invoiceNo").value=r.invoiceNo;
+    document.getElementById("patientName").value=r.patientName;
+    document.getElementById("totalAmount").textContent=r.total;
+    document.getElementById("balance").textContent=r.balance;
+  }
+
+  document.querySelectorAll(".btn").forEach(b=>b.style.display="none");
+
+  const invoice=document.getElementById("invoice");
+  const canvas=await html2canvas(invoice,{scale:2,useCORS:true});
+  const imgData=canvas.toDataURL("image/png");
+
+  const pdf=new jsPDF("p","mm","a4");
+  const width=pdf.internal.pageSize.getWidth();
+  const height=(canvas.height*width)/canvas.width;
+
+  pdf.addImage(imgData,"PNG",0,0,width,height);
+
+  const logo=new Image();
+  logo.src="veza.png";
+
+  logo.onload=function(){
+    const logoWidth=40;
+    const logoHeight=logoWidth*(logo.height/logo.width);
+
+    // Add logo top-right
+    pdf.addImage(logo,"PNG",width-logoWidth-10,10,logoWidth,logoHeight);
+
+    // ===== ADD SIGNATURE SECTION =====
+    const signatureY = height - 25;
+
+    pdf.setFontSize(12);
+    pdf.setFont("helvetica","bold");
+    pdf.text("FOR GM VEZA HOSPITAL", width - 80, signatureY);
+
+    // Signature line
+    pdf.setLineWidth(0.5);
+    pdf.line(width - 80, signatureY + 5, width - 20, signatureY + 5);
+
+    pdf.setFont("helvetica","normal");
+    pdf.text("Authorized Signature", width - 80, signatureY + 12);
+    // ==================================
+
+    const invoiceNo=document.getElementById("invoiceNo").value||"Invoice";
+    pdf.save(`GM_VEZA_${invoiceNo}.pdf`);
+
+    document.querySelectorAll(".btn").forEach(b=>b.style.display="inline-block");
+  };
+}
+
+function downloadExcel(){
+  let records=JSON.parse(localStorage.getItem("vezaInvoices"))||[];
+  if(records.length==0){alert("No records!");return;}
+  const ws=XLSX.utils.json_to_sheet(records);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Invoices");
+  XLSX.writeFile(wb,"GM_VEZA_Records.xlsx");
+}
+
+window.onload=displayRecords;
+</script>
+
+</body>
+</html>
